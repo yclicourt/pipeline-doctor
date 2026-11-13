@@ -1,0 +1,30 @@
+# pipeline-doctor.yml — the tool checks itself with this config.
+# Every silenced finding carries a reason: a silence without
+# justification is a hole nobody reviews.
+failOn: error
+ignore:
+  # Test fixtures: fake credentials by design, no live secret exists here.
+  - rule: secrets/aws-key
+    path: tests/secrets.test.ts
+    reason: "test fixtures use AWS's published example key (AKIA...MPLE), no live credential"
+  - rule: secrets/private-key
+    path: tests/secrets.test.ts
+    reason: "test fixtures contain generated throwaway key blocks, no live key"
+  - rule: secrets/connection-string-password
+    path: tests/secrets.test.ts
+    reason: "test fixtures use fake postgres/mongo URLs with placeholder passwords"
+  - rule: secrets/generic-token
+    path: tests/secrets.test.ts
+    reason: "test fixtures use fake vendor-style tokens (xoxb, api_key), no live credential"
+  # README: documentation examples, not real credentials.
+  - rule: secrets/aws-key
+    path: README.md
+    reason: "documentation example using AWS's published example key"
+  - rule: secrets/connection-string-password
+    path: README.md
+    reason: "documentation examples with placeholder URLs (username:password@host)"
+checks:
+  workflow: true
+  secrets: true
+  deps: true
+  hygiene: true
