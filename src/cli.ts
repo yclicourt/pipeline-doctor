@@ -169,4 +169,7 @@ async function main(): Promise<void> {
   process.exitCode = result.exitCode;
 }
 
-main();
+main().catch((error) => {
+  console.error("pipeline-doctor: unexpected error:", error);
+  process.exit(1);
+});
