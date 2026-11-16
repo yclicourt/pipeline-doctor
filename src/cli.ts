@@ -16,7 +16,9 @@ Usage:
   pipeline-doctor init [path]             write an example pipeline-doctor.yml (refuses to overwrite)
 
 Options:
-  --only <family>     run one check family: workflow | secrets | deps | hygiene
+  --only <family>     run one check family: workflow | secrets | deps | hygiene | ci | deploy
+  --repo-only         deploy checks without cluster access: DEP-01, DEP-04,
+                      DEP-09 and DEP-10 are reported as skipped, not failed
   --json              print the report as JSON instead of the terminal report
   --junit             print the report as JUnit XML instead of the terminal report
   --no-color          disable colors even when stdout is a TTY
@@ -32,6 +34,7 @@ interface CliOptions {
   command: "check" | "init";
   targetDir: string;
   only?: CheckFamily;
+  repoOnly: boolean;
   json: boolean;
   junit: boolean;
   noColor: boolean;
@@ -47,6 +50,7 @@ function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     command: "check",
     targetDir: ".",
+    repoOnly: false,
     json: false,
     junit: false,
     noColor: false,
@@ -63,6 +67,10 @@ function parseArgs(argv: string[]): CliOptions {
       console.log(VERSION);
       process.exit(0);
     }
+    if (arg === "--repo-only") {
+      options.repoOnly = true;
+      continue;
+    }
     if (arg === "--json") {
       options.json = true;
       continue;
@@ -78,11 +86,13 @@ function parseArgs(argv: string[]): CliOptions {
     if (arg === "--only") {
       const value = argv[i + 1];
       if (value === undefined) {
-        failUsage("--only requires a family: workflow | secrets | deps | hygiene");
+        failUsage(
+          "--only requires a family: workflow | secrets | deps | hygiene | ci | deploy",
+        );
       }
       if (!(CHECK_FAMILIES as string[]).includes(value)) {
         failUsage(
-          `--only must be one of workflow | secrets | deps | hygiene, got "${value}"`,
+          `--only must be one of workflow | secrets | deps | hygiene | ci | deploy, got "${value}"`,
         );
       }
       options.only = value as CheckFamily;
@@ -119,6 +129,9 @@ async function runOrExit(options: CliOptions): Promise<RunResult> {
     return await runCheck({
       only: options.only,
       targetDir: options.targetDir,
+      // --repo-only forces repo-only on; without the flag the runner
+      // falls back to the deploy.repoOnly value from the config file.
+      repoOnly: options.repoOnly ? true : undefined,
     });
   } catch (error) {
     if (error instanceof ConfigError) {
@@ -169,6 +182,8 @@ async function main(): Promise<void> {
   process.exitCode = result.exitCode;
 }
 
+// Yoan's fix (main 8ace21c): a rejected promise must not surface as an
+// unhandled rejection — report it and exit 1.
 main().catch((error) => {
   console.error("pipeline-doctor: unexpected error:", error);
   process.exit(1);

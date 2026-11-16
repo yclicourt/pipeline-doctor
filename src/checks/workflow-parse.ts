@@ -87,6 +87,12 @@ export interface StepInfo {
   persistCredentialsLine: number;
   /** Value of `with.cache`, when the step sets one (setup-node etc.). */
   cache: string | null;
+  /**
+   * Value of `with.tags` (docker/build-push-action), when the step
+   * sets one. May be a multi-line block scalar — one image ref per
+   * line. Line = first line of the value.
+   */
+  tags: { value: string; line: number } | null;
 }
 
 export interface JobInfo {
@@ -127,6 +133,7 @@ function collectStep(stepNode: Node | null, text: string): StepInfo | null {
   let persistCredentials: boolean | null = null;
   let persistCredentialsLine = 1;
   let cache: string | null = null;
+  let tags: StepInfo["tags"] = null;
   if (withPair && withPair.value && isMap(withPair.value)) {
     const persistPair = pairByKey(withPair.value, "persist-credentials");
     if (persistPair) {
@@ -136,6 +143,13 @@ function collectStep(stepNode: Node | null, text: string): StepInfo | null {
     const cachePair = pairByKey(withPair.value, "cache");
     if (cachePair) {
       cache = scalarString(cachePair.value);
+    }
+    const tagsPair = pairByKey(withPair.value, "tags");
+    if (tagsPair && scalarString(tagsPair.value) !== null) {
+      tags = {
+        value: scalarString(tagsPair.value) as string,
+        line: nodeLine(text, tagsPair.value),
+      };
     }
   }
 
@@ -157,6 +171,7 @@ function collectStep(stepNode: Node | null, text: string): StepInfo | null {
     persistCredentials,
     persistCredentialsLine,
     cache,
+    tags,
   };
 }
 

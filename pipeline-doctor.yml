@@ -28,3 +28,11 @@ checks:
   secrets: true
   deps: true
   hygiene: true
+  ci: true
+  deploy: true
+deploy:
+  repoOnly: false
+  budgets:
+    frontendMb: 75
+    backendMb: 250
+    genericMb: 300

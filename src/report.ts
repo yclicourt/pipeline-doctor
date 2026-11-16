@@ -36,6 +36,7 @@ export function renderTerminal(report: Report, useColor: boolean): string {
   const allRules = [
     ...report.findings.map((f) => f.rule),
     ...report.ignored.map((f) => f.rule),
+    ...report.skipped.map((s) => s.rule),
   ];
   const ruleWidth = Math.max(0, ...allRules.map((r) => r.length)) + 2;
 
@@ -51,7 +52,11 @@ export function renderTerminal(report: Report, useColor: boolean): string {
     return useColor ? `${YELLOW}⚠${RESET}` : "⚠";
   };
 
-  if (report.findings.length === 0 && report.ignored.length === 0) {
+  if (
+    report.findings.length === 0 &&
+    report.ignored.length === 0 &&
+    report.skipped.length === 0
+  ) {
     lines.push("  No issues found.");
   }
 
@@ -73,13 +78,21 @@ export function renderTerminal(report: Report, useColor: boolean): string {
     }
   }
 
+  if (report.skipped.length > 0) {
+    lines.push("");
+    lines.push("  skipped checks (not verified — see the reason):");
+    for (const check of report.skipped) {
+      lines.push(`  – ${padRule(check.rule, ruleWidth)}${check.reason}`);
+    }
+  }
+
   const errors = report.findings.filter((f) => f.severity === "error").length;
   const warnings = report.findings.filter(
     (f) => f.severity === "warning",
   ).length;
   lines.push("");
   lines.push(
-    `  ${errors} error${errors === 1 ? "" : "s"} · ${warnings} warning${warnings === 1 ? "" : "s"} · ignored: ${report.ignored.length}`,
+    `  ${errors} error${errors === 1 ? "" : "s"} · ${warnings} warning${warnings === 1 ? "" : "s"} · ignored: ${report.ignored.length} · skipped: ${report.skipped.length}`,
   );
 
   return lines.join("\n") + "\n";
@@ -115,6 +128,10 @@ export function renderJson(report: Report, version: string): string {
           fix: f.fix,
           reason: f.reason,
         })),
+        skipped: report.skipped.map((s) => ({
+          rule: s.rule,
+          reason: s.reason,
+        })),
       },
       null,
       2,
@@ -138,13 +155,13 @@ function escapeXml(value: string): string {
  */
 export function renderJunit(report: Report): string {
   const errors = report.findings.filter((f) => f.severity === "error").length;
-  const total = report.findings.length;
+  const total = report.findings.length + report.skipped.length;
   const seconds = (report.stats.durationMs / 1000).toFixed(3);
   const lines: string[] = [];
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push("<testsuites>");
   lines.push(
-    `  <testsuite name="pipeline-doctor" tests="${total}" failures="${errors}" time="${seconds}">`,
+    `  <testsuite name="pipeline-doctor" tests="${total}" failures="${errors}" skipped="${report.skipped.length}" time="${seconds}">`,
   );
   for (const finding of report.findings) {
     const name = escapeXml(
@@ -158,6 +175,13 @@ export function renderJunit(report: Report): string {
         `      <failure message="${escapeXml(finding.detail)}">${escapeXml(finding.fix)}</failure>`,
       );
     }
+    lines.push("    </testcase>");
+  }
+  for (const check of report.skipped) {
+    lines.push(
+      `    <testcase classname="${escapeXml(check.rule)}" name="${escapeXml(check.reason)}" time="0">`,
+    );
+    lines.push(`      <skipped message="${escapeXml(check.reason)}"/>`);
     lines.push("    </testcase>");
   }
   lines.push("  </testsuite>");

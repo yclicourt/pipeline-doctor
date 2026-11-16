@@ -1,1 +1,33 @@
-{"author":"Yoan Carlos Licourt Acosta","bin":{"pipeline-doctor":"dist/cli.js"},"dependencies":{"yaml":"^2.8.0"},"description":"One command that tells you if your pipeline is safe before it costs you the repo.","devDependencies":{"@types/node":"^26.6.6","typescript":"^5.9.3","vitest":"^4.1.12"},"engines":{"node":">=20"},"files":["dist"],"license":"MIT","main":"dist/cli.js","name":"pipeline-doctor","scripts":{"build":"tsc","test":"vitest run","typecheck":"tsc --noEmit"},"type":"module","version":"0.1.0"}
+{
+  "author": "Yoan Carlos Licourt Acosta",
+  "bin": {
+    "pipeline-doctor": "dist/cli.js"
+  },
+  "dependencies": {
+    "pg": "^8.23.1",
+    "yaml": "^2.8.0"
+  },
+  "description": "One command that tells you if your pipeline is safe before it costs you the repo.",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "main": "dist/cli.js",
+  "name": "pipeline-doctor",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "type": "module",
+  "version": "0.2.0"
+}
