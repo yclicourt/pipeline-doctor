@@ -23,6 +23,15 @@ ignore:
   - rule: secrets/connection-string-password
     path: README.md
     reason: "documentation examples with placeholder URLs (username:password@host)"
+  # TEMPORAL (2026-11-17): GHSA-fc5q-39xc-vjpf (CVE-2026-112366, high) in
+  # picomatch@4.0.7 — transitive dev-only dep (vitest/vite), no fixed
+  # version published yet, not shipped in the npm package. REMOVE when a
+  # fix lands and the lockfile is updated. NOTE: this entry silences every
+  # deps/vulnerability finding in package-lock.json, not just this GHSA —
+  # the ignore matcher has no per-advisory field (candidate for 0.2.1).
+  - rule: deps/vulnerability
+    path: package-lock.json
+    reason: "GHSA-fc5q-39xc-vjpf (CVE-2026-112366) in picomatch@4.0.7, transitive dev-only dep via vitest/vite, no fixed version published yet, not shipped in the npm package — remove when a fix lands"
 checks:
   workflow: true
   secrets: true
