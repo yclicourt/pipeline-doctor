@@ -4,6 +4,7 @@ import { ConfigError } from "./config.js";
 import { runCheck, runInit, type RunResult } from "./runner.js";
 import { renderTerminal, renderJson, renderJunit } from "./report.js";
 import { CHECK_FAMILIES, type CheckFamily } from "./types.js";
+import { parseCiSelection, type CiSelection } from "./ci/detect.js";
 import packageJson from "../package.json" with { type: "json" };
 
 const VERSION = packageJson.version;
@@ -17,6 +18,7 @@ Usage:
 
 Options:
   --only <family>     run one check family: workflow | secrets | deps | hygiene | ci | deploy
+  --ci <source>       only audit one CI: github | gitlab | auto (default: auto)
   --repo-only         deploy checks without cluster access: DEP-01, DEP-04,
                       DEP-09 and DEP-10 are reported as skipped, not failed
   --json              print the report as JSON instead of the terminal report
@@ -34,6 +36,7 @@ interface CliOptions {
   command: "check" | "init";
   targetDir: string;
   only?: CheckFamily;
+  ci?: CiSelection;
   repoOnly: boolean;
   json: boolean;
   junit: boolean;
@@ -99,6 +102,19 @@ function parseArgs(argv: string[]): CliOptions {
       i++;
       continue;
     }
+    if (arg === "--ci") {
+      const value = argv[i + 1];
+      if (value === undefined) {
+        failUsage("--ci requires a source: github | gitlab | auto");
+      }
+      try {
+        options.ci = parseCiSelection(value);
+      } catch (error) {
+        failUsage(error instanceof Error ? error.message : String(error));
+      }
+      i++;
+      continue;
+    }
     if (arg.startsWith("--")) {
       failUsage(`unknown option "${arg}"`);
     }
@@ -128,6 +144,7 @@ async function runOrExit(options: CliOptions): Promise<RunResult> {
   try {
     return await runCheck({
       only: options.only,
+      ci: options.ci,
       targetDir: options.targetDir,
       // --repo-only forces repo-only on; without the flag the runner
       // falls back to the deploy.repoOnly value from the config file.

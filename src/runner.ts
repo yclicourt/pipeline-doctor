@@ -12,16 +12,24 @@ import {
   EXAMPLE_CONFIG,
   type PipelineDoctorConfig,
 } from "./config.js";
-import { checkWorkflow } from "./checks/workflow.js";
+import { checkWorkflowModel } from "./checks/workflow.js";
 import {
   checkSecrets,
   collectSecretFiles,
   MAX_SECRET_FILE_BYTES,
 } from "./checks/secrets.js";
-import { checkHygiene } from "./checks/hygiene.js";
+import { checkHygieneModel } from "./checks/hygiene.js";
 import { checkDeps } from "./checks/deps.js";
 import { checkCi } from "./checks/ci.js";
 import { checkDeploy } from "./checks/deploy.js";
+import { adaptGitHub } from "./ci/github.js";
+import { adaptGitLab } from "./ci/gitlab.js";
+import {
+  detectCiSources,
+  resolveCiSources,
+  type CiSelection,
+} from "./ci/detect.js";
+import type { CiPipeline } from "./ci/model.js";
 import { readDeployEnv } from "./env.js";
 import type {
   CheckFamily,
@@ -44,6 +52,12 @@ import type {
 export interface RunOptions {
   only?: CheckFamily;
   targetDir: string;
+  /**
+   * Which CI to audit: github | gitlab | auto (default). Auto means
+   * whatever the repo has. A value naming a CI the repo does not
+   * have audits nothing for the workflow/hygiene families.
+   */
+  ci?: CiSelection;
   /**
    * Repo-only mode (decision 02). CLI flag wins over the config file:
    * --repo-only forces it on; without the flag the config value
@@ -109,34 +123,57 @@ export async function runCheck(options: RunOptions): Promise<RunResult> {
   let filesScanned = 0;
   let depsChecked = 0;
 
-  // Workflow + hygiene both read the same files; each family parses
-  // the content itself, so the check functions stay pure and
-  // independent. An unparseable workflow fails loudly (exit 2).
+  // Workflow + hygiene run on the common CI model (0.2.0 Fase B):
+  // each detected CI source (GitHub Actions and/or GitLab CI) is
+  // parsed by its adapter, then the same rules run on the model.
+  // An unparseable pipeline fails loudly (exit 2).
   if (families.includes("workflow") || families.includes("hygiene")) {
-    const files = findWorkflowFiles(targetDir);
-    workflowCount = files.length;
-    for (const file of files) {
-      let content: string;
+    const detected = detectCiSources(targetDir);
+    const sources = resolveCiSources(options.ci ?? "auto", detected);
+    const pipelines: CiPipeline[] = [];
+    const readText = (absolutePath: string): string => {
       try {
-        content = readFileSync(file, "utf8");
+        return readFileSync(absolutePath, "utf8");
       } catch (error) {
         throw new Error(
-          `cannot read ${toPosixRelative(targetDir, file)}: ${error instanceof Error ? error.message : String(error)}`,
+          `cannot read ${toPosixRelative(targetDir, absolutePath)}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      const rel = toPosixRelative(targetDir, file);
+    };
+    const parsePipeline = (
+      adapt: (content: string, file: string) => CiPipeline | null,
+      absolutePath: string,
+      rel: string,
+    ): void => {
       try {
-        if (families.includes("workflow")) {
-          findings.push(...checkWorkflow(content, rel));
-        }
-        if (families.includes("hygiene")) {
-          findings.push(...checkHygiene(content, rel));
-        }
+        const pipeline = adapt(readText(absolutePath), rel);
+        if (pipeline !== null) pipelines.push(pipeline);
       } catch (error) {
-        // An unparseable workflow cannot be audited — fail loudly.
+        // An unparseable pipeline cannot be audited — fail loudly.
         throw new Error(
-          `failed to parse ${toPosixRelative(targetDir, file)}: ${error instanceof Error ? error.message : String(error)}`,
+          `failed to parse ${rel}: ${error instanceof Error ? error.message : String(error)}`,
         );
+      }
+    };
+    if (sources.includes("github")) {
+      for (const file of findWorkflowFiles(targetDir)) {
+        workflowCount++;
+        parsePipeline(adaptGitHub, file, toPosixRelative(targetDir, file));
+      }
+    }
+    if (sources.includes("gitlab")) {
+      const gitlabFile = join(targetDir, ".gitlab-ci.yml");
+      if (existsSync(gitlabFile)) {
+        workflowCount++;
+        parsePipeline(adaptGitLab, gitlabFile, ".gitlab-ci.yml");
+      }
+    }
+    for (const pipeline of pipelines) {
+      if (families.includes("workflow")) {
+        findings.push(...checkWorkflowModel(pipeline));
+      }
+      if (families.includes("hygiene")) {
+        findings.push(...checkHygieneModel(pipeline));
       }
     }
   }

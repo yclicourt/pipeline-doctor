@@ -37,6 +37,11 @@ npx pipeline-doctor /path/to/repo
 # Only one check family
 npx pipeline-doctor --only workflow
 
+# Only one CI system (auto-detected by default: .github/workflows
+# means GitHub Actions, .gitlab-ci.yml means GitLab CI)
+npx pipeline-doctor --ci gitlab
+npx pipeline-doctor --ci github
+
 # Only the post-deploy checks (needs credentials, see below)
 npx pipeline-doctor --only deploy
 
@@ -168,12 +173,41 @@ justification is a hole nobody reviews.
 
 | Family | What it catches |
 |---|---|
-| `workflow` | Unpinned actions, `pull_request_target` with checkout, template injection, excessive permissions, persisted credentials, untrusted input in `run:` |
+| `workflow` | Unpinned actions, `pull_request_target` with checkout, template injection, excessive permissions, persisted credentials, untrusted input in `run:` — on GitHub Actions and GitLab CI (see below) |
 | `secrets` | GitHub tokens, AWS keys, private keys, passwords in connection URLs, generic high-entropy tokens — masked in the report, never printed in full |
 | `deps` | Vulnerable dependencies from the lockfile, via the free OSV API (no key). Critical/high severity fails the CI; medium/low warns. No lockfile → one warning, never an error. If OSV cannot be reached the run fails loudly (exit 2) instead of reporting "all clear" |
-| `hygiene` | Missing timeouts, missing concurrency with `cancel-in-progress` on PR workflows, unprotected deploys, `setup-node` without cache |
+| `hygiene` | Missing timeouts, missing concurrency with `cancel-in-progress` on PR workflows, unprotected deploys, `setup-node` without cache — on GitHub Actions and GitLab CI (see below) |
 | `ci` | What the pipeline builds: image tags pinned to a commit SHA, digests matching Harbor, no `latest` anywhere, a clean git tree, OWASP Docker (non-root `USER` in the last stage) and security headers, last GitHub run green |
 | `deploy` | What is actually running in the cluster — the 12 checks below |
+
+### GitLab CI (v0.2.0)
+
+The `workflow` and `hygiene` families also audit `.gitlab-ci.yml`,
+through the same rules, on one normalized model. Detection is
+automatic (a repo with `.gitlab-ci.yml` is audited as GitLab, a repo
+with `.github/workflows/` as GitHub, both when both exist); `--ci
+github | gitlab | auto` forces one side.
+
+How the GitHub rules map to GitLab:
+
+| GitHub rule | GitLab equivalent |
+|---|---|
+| `workflow/unpinned-action` (action without SHA) | Image/service without a digest, remote `include:` (no ref mechanism exists), project `include:` without `ref:`. A project include WITH a ref, and local/template includes, pass. |
+| `workflow/template-injection` (`${{ github.event.* }}` in `run:`) | An untrusted variable expanded in `script:` (`$CI_COMMIT_MESSAGE`, MR title/description, source branch). Ordinary variables (`$CI_JOB_ID`, `$MY_VAR`) pass. |
+| `hygiene/no-timeout` | A job without `timeout:` |
+| `hygiene/unprotected-deploy` | A deploy job without `environment:` (presence only — whether the environment is protected is a project setting, not YAML) |
+
+Six rules have no YAML-distinguishable GitLab equivalent and stay
+silent on GitLab, by design: `workflow/excessive-permissions`
+(job-token scopes live in project settings),
+`workflow/persist-credentials` (no equivalent),
+`workflow/pull-request-target` (MR pipelines run on MR code by
+design), `workflow/untrusted-input-in-run` (trigger-time variables
+cannot be told apart from project variables in the YAML),
+`hygiene/no-concurrency` (GitLab cancellation is per-job
+`interruptible:`) and `hygiene/no-cache` (`setup-node` only).
+Anything the tool cannot verify from the YAML is never reported as
+a finding — a missing backend is `skipped`, never failed.
 
 ### Deploy checks
 
